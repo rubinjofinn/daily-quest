@@ -436,6 +436,11 @@ const STYLE = `
   .board-row-name { font-family:'OrbitronEmbed',var(--font-d); font-size:14px; font-weight:900; }
   .board-row-val { font-family:'OrbitronEmbed',var(--font-d); font-size:16px; font-weight:900; color:rgba(255,255,255,0.9); }
   .board-row-empty { color:rgba(255,255,255,0.25); font-size:14px; }
+  .board-info-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .board-info-modal { background:#0c0c1e; border:1.5px solid rgba(0,229,255,0.4); border-radius:16px; padding:24px 20px; max-width:320px; width:100%; }
+  .board-info-title { font-family:'OrbitronEmbed',var(--font-d); font-size:12px; font-weight:900; color:var(--cyan); letter-spacing:2px; margin-bottom:16px; text-align:center; }
+  .board-info-text { font-family:var(--font-b); font-size:13px; color:rgba(255,255,255,0.8); line-height:1.6; margin-bottom:16px; }
+  .board-info-close { width:100%; padding:12px; border-radius:10px; border:1.5px solid rgba(0,229,255,0.4); background:rgba(0,229,255,0.07); color:var(--cyan); font-family:var(--font-d); font-size:10px; font-weight:700; letter-spacing:2px; cursor:pointer; }
   .trend-up { color:#39ff14; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
   .trend-down { color:#ff2d55; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
   .trend-same { color:rgba(255,255,255,0.3); font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:700; }
@@ -761,6 +766,7 @@ export default function DailyQuest() {
   const [calViewYear, setCalViewYear]   = useState(today.getFullYear());
   const [calViewMonth, setCalViewMonth] = useState(today.getMonth());
   const [boardYear, setBoardYear]       = useState(today.getFullYear());
+  const [boardInfo, setBoardInfo]       = useState(null); // {player, exercise, category, curVal, prevVal, cutoffDay, curMonth, prevMonth}
   const [boardMonth, setBoardMonth]     = useState(today.getMonth());
   const [calModal, setCalModal]         = useState(null);
   const [adminModal, setAdminModal]     = useState(null); // null | 'pin' | 'manage'
@@ -1599,7 +1605,13 @@ export default function DailyQuest() {
                               {/* Center: main value + trend */}
                               <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
                                 {val>0
-                                  ? <div className="board-row-val" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{val.toLocaleString()}</div>
+                                  ? <div className="board-row-val"
+                                      style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
+                                      onMouseEnter={e=>{ e.currentTarget.style.textShadow=`0 0 20px ${pl.color}`; e.currentTarget.style.transform="scale(1.15)"; e.currentTarget.style.display="inline-block"; }}
+                                      onMouseLeave={e=>{ e.currentTarget.style.textShadow=`0 0 8px ${pl.glow}`; e.currentTarget.style.transform="scale(1)"; }}
+                                      onClick={()=>setBoardInfo({player:pl, exercise:ex.name, category:cat.label, curVal:val, prevVal, cutoffDay, curMonth:mo, curYear:yr, prevMonth:prevMo, prevYear:prevYr})}>
+                                      {val.toLocaleString()}
+                                    </div>
                                   : <div className="board-row-empty">—</div>}
                                 {trend && val>0 && <div className={trend.cls}>{trend.arrow} {trend.label}</div>}
                               </div>
@@ -1607,7 +1619,13 @@ export default function DailyQuest() {
                               {cat.key==="totalReps" ? (
                                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
                                   {avgSet>0 ? <>
-                                    <div style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:13,fontWeight:900,color:"rgba(255,255,255,0.55)"}}>∅{avgSet}</div>
+                                    <div
+                                      style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:13,fontWeight:900,color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
+                                      onMouseEnter={e=>{ e.currentTarget.style.textShadow=`0 0 20px ${pl.color}`; e.currentTarget.style.transform="scale(1.15)"; e.currentTarget.style.display="inline-block"; }}
+                                      onMouseLeave={e=>{ e.currentTarget.style.textShadow=`0 0 8px ${pl.glow}`; e.currentTarget.style.transform="scale(1)"; }}
+                                      onClick={()=>setBoardInfo({player:pl, exercise:ex.name, category:"AVG SET SIZE", curVal:avgSet, prevVal:prevAvgSet, cutoffDay, curMonth:mo, curYear:yr, prevMonth:prevMo, prevYear:prevYr, isAvg:true})}>
+                                      ∅{avgSet}
+                                    </div>
                                     {avgTrend && <div className={avgTrend.cls} style={{fontSize:9}}>{avgTrend.arrow} {avgTrend.label}</div>}
                                   </> : <div className="board-row-empty">—</div>}
                                 </div>
@@ -1819,6 +1837,43 @@ export default function DailyQuest() {
                   })}
                 </div>
                 <button className="cal-modal-save" onClick={()=>setCalModal(null)}>DONE</button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── BOARD INFO MODAL ── */}
+        {boardInfo && (()=>{
+          const {player:pl, exercise, category, curVal, prevVal, cutoffDay, curMonth, curYear, prevMonth, prevYear} = boardInfo;
+          const curMonthName = new Date(curYear, curMonth, 1).toLocaleDateString("en-US",{month:"long"});
+          const prevMonthName = new Date(prevYear, prevMonth, 1).toLocaleDateString("en-US",{month:"long"});
+          const diff = curVal - prevVal;
+          const pct = prevVal>0 ? Math.round((diff/prevVal)*100) : null;
+          const better = diff > 0;
+          const same = diff === 0;
+          return (
+            <div className="board-info-overlay" onClick={()=>setBoardInfo(null)}>
+              <div className="board-info-modal" onClick={e=>e.stopPropagation()}>
+                <div className="board-info-title">ℹ️ {boardInfo.isAvg ? "AVG REP COUNT PER SET" : category}</div>
+                <div className="board-info-text">
+                  <strong style={{color:pl.color}}>{pl.name}</strong> — <strong>{exercise}</strong>
+                  <br/><br/>
+                  Showing where you stand <strong>right now in {curMonthName}</strong> vs the <strong>exact same point in {prevMonthName}</strong>.
+                  <br/><br/>
+                  <span style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>First {cutoffDay} days of each month:</span>
+                  <br/>
+                  <span style={{color:"rgba(255,255,255,0.45)"}}>{prevMonthName}:</span> <strong>{boardInfo.isAvg ? prevVal.toFixed(1) : prevVal.toLocaleString()}</strong>
+                  <br/>
+                  <span style={{color:pl.color}}>{curMonthName}:</span> <strong style={{color:pl.color}}>{boardInfo.isAvg ? curVal.toFixed(1) : curVal.toLocaleString()}</strong>
+                  <br/><br/>
+                  {same
+                    ? <span style={{color:"rgba(255,255,255,0.5)"}}>→ Same pace as last month.</span>
+                    : better
+                      ? <span style={{color:"#39ff14"}}>↑ {boardInfo.isAvg ? Math.abs(diff).toFixed(1) : diff.toLocaleString()} ahead of last month's pace{pct!==null?` (+${pct}%)`:""}</span>
+                      : <span style={{color:"#ff2d55"}}>↓ {boardInfo.isAvg ? Math.abs(diff).toFixed(1) : Math.abs(diff).toLocaleString()} behind last month's pace{pct!==null?` (${pct}%)`:""}</span>
+                  }
+                </div>
+                <button className="board-info-close" onClick={()=>setBoardInfo(null)}>CLOSE</button>
               </div>
             </div>
           );
