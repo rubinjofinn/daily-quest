@@ -444,6 +444,13 @@ const STYLE = `
   .trend-up { color:#39ff14; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
   .trend-down { color:#ff2d55; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
   .trend-same { color:rgba(255,255,255,0.3); font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:700; }
+  @media (max-width: 480px) {
+    .board-ex-name { font-size:20px; }
+    .board-cat-title { font-size:13px; letter-spacing:1.5px; }
+    .board-row-name { font-size:16px; }
+    .board-row-val { font-size:19px; }
+    .trend-up, .trend-down, .trend-same { font-size:12px; }
+  }
 
 
   /* ── SETS PAGE ── */
