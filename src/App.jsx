@@ -407,7 +407,7 @@ const STYLE = `
 
   /* ── TOTALS PAGE ── */
   .totals-view { width:100%; padding:16px 12px 110px; box-sizing:border-box; }
-  .totals-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(18px,4vw,26px); font-weight:900; color:var(--cyan); text-align:center; letter-spacing:4px; margin-bottom:20px; text-shadow:0 0 20px rgba(0,229,255,0.5); }
+  .totals-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(18px,4vw,26px); font-weight:900; color:#ffffff; text-align:center; letter-spacing:4px; margin-bottom:20px; text-shadow:0 0 20px rgba(255,255,255,0.3); }
   .totals-ex-block { background:rgba(0,229,255,0.04); border:2px solid rgba(0,229,255,0.6); border-radius:14px; padding:16px 14px; margin-bottom:16px; box-shadow:0 0 14px rgba(0,229,255,0.15); }
   .totals-ex-name { font-family:'OrbitronEmbed',var(--font-d); font-size:16px; font-weight:900; color:var(--cyan); text-align:center; margin-bottom:12px; letter-spacing:2px; }
   .totals-player-card { border:1.5px solid; border-radius:10px; padding:14px 14px 12px; margin-bottom:10px; }
@@ -423,7 +423,7 @@ const STYLE = `
 
   /* ── BOARD PAGE ── */
   .board-view { width:100%; padding:12px 12px 110px; box-sizing:border-box; }
-  .board-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(14px,3.5vw,20px); font-weight:900; color:#ffe600; text-align:center; letter-spacing:3px; margin-bottom:14px; text-shadow:0 0 20px rgba(255,230,0,0.5); }
+  .board-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(14px,3.5vw,20px); font-weight:900; color:#ffffff; text-align:center; letter-spacing:3px; margin-bottom:14px; text-shadow:0 0 20px rgba(255,255,255,0.3); }
   .board-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
   .board-nav-btn { font-family:'OrbitronEmbed',var(--font-d); font-size:9px; font-weight:700; letter-spacing:1px; color:var(--cyan); background:rgba(0,229,255,0.06); border:1.5px solid rgba(0,229,255,0.3); border-radius:8px; padding:8px 12px; cursor:pointer; }
   .board-month { font-family:'OrbitronEmbed',var(--font-d); font-size:13px; font-weight:700; color:rgba(255,255,255,0.7); letter-spacing:1px; }
@@ -436,11 +436,14 @@ const STYLE = `
   .board-row-name { font-family:'OrbitronEmbed',var(--font-d); font-size:14px; font-weight:900; }
   .board-row-val { font-family:'OrbitronEmbed',var(--font-d); font-size:16px; font-weight:900; color:rgba(255,255,255,0.9); }
   .board-row-empty { color:rgba(255,255,255,0.25); font-size:14px; }
+  .trend-up { color:#39ff14; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
+  .trend-down { color:#ff2d55; font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:900; letter-spacing:0.5px; }
+  .trend-same { color:rgba(255,255,255,0.3); font-family:'OrbitronEmbed',var(--font-d); font-size:10px; font-weight:700; }
 
 
   /* ── SETS PAGE ── */
   .sets-view { width:100%; padding:12px 12px 110px; box-sizing:border-box; }
-  .sets-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(18px,4vw,24px); font-weight:900; color:var(--cyan); letter-spacing:4px; margin-bottom:18px; text-shadow:0 0 16px rgba(0,229,255,0.5); text-align:center; }
+  .sets-title { font-family:'OrbitronEmbed',var(--font-d); font-size:clamp(18px,4vw,24px); font-weight:900; color:#ffffff; letter-spacing:4px; margin-bottom:18px; text-shadow:0 0 16px rgba(255,255,255,0.3); text-align:center; }
   .sets-filters-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
   .sets-filter-section { display:flex; flex-direction:column; gap:6px; }
   .sets-filter-label { font-family:'OrbitronEmbed',var(--font-d); font-size:9px; font-weight:700; color:rgba(255,255,255,0.5); letter-spacing:2px; margin-bottom:2px; }
@@ -722,6 +725,28 @@ const FONT_STYLE = `
 export default function DailyQuest() {
   const [tab, setTab]                   = useState("players");
   const [activePlayer, setActivePlayer] = useState(null);
+  const [myPlayer, setMyPlayer] = useState(()=>{ try { return localStorage.getItem("dq_myplayer")||null; } catch(e){ return null; } });
+  const [playerOrder, setPlayerOrder] = useState(()=>{
+    try {
+      const saved = localStorage.getItem("dq_player_order");
+      return saved ? JSON.parse(saved) : null;
+    } catch(e){ return null; }
+  });
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const longPressTimer = useRef(null);
+  const [draggingEnabled, setDraggingEnabled] = useState(false);
+
+  function setMyPlayerAndSave(name) {
+    if(myPlayer===name) {
+      // Toggle off
+      setMyPlayer(null);
+      try { localStorage.removeItem("dq_myplayer"); } catch(e){}
+    } else {
+      setMyPlayer(name);
+      try { localStorage.setItem("dq_myplayer", name); } catch(e){}
+    }
+  }
   const [logs, setLogs]                 = useState(()=>seedData());
   const [loading, setLoading]           = useState(false); // background only
   const [goals, setGoals]               = useState(Object.fromEntries(EXERCISES.map(e=>[e.name,e.goal])));
@@ -760,6 +785,13 @@ export default function DailyQuest() {
   const [newPlayer, setNewPlayer]       = useState("");
   const nextId = useRef(Date.now());
   const countdown = useCountdown();
+
+  // ── Auto-select myPlayer on startup ──
+  useEffect(()=>{
+    if(myPlayer && !activePlayer) {
+      setActivePlayer(myPlayer);
+    }
+  }, [myPlayer]);
 
   // ── Load: localStorage first (instant), then sync from Sheets ──
   useEffect(()=>{
@@ -997,14 +1029,48 @@ export default function DailyQuest() {
             }} onClick={()=>{setPinInput("");setPinError(false);setAdminModal("pin");}}>+ MANAGE PLAYERS</button>
 
             <div className="player-grid">
-              {players.map(pl=>{
+              {(()=>{
+                // Apply saved order
+                const orderedNames = playerOrder || players.map(p=>p.name);
+                const orderedPlayers = orderedNames
+                  .map(n=>players.find(p=>p.name===n))
+                  .filter(Boolean);
+                // Add any new players not in order
+                players.forEach(p=>{ if(!orderedPlayers.find(op=>op.name===p.name)) orderedPlayers.push(p); });
+                return orderedPlayers;
+              })().map((pl, idx)=>{
                 const tt=todayTotals(pl.name);
                 const questsDone=EXERCISES.filter(ex=>(tt[ex.name]||0)>=(goals[ex.name]||ex.goal)).length;
                 return (
-                  <div key={pl.name} className={`pc${questsDone===EXERCISES.length?" all-done":""}`}
-                    style={{"--pc":pl.color,"--pc-dim":pl.dim,"--pc-glow":pl.glow,"--pc-glow2":pl.glow2}}
-                    onClick={()=>{ if(!isSunday) goQuests(pl.name); }}>
-                    <div className="pc-name">{pl.name}</div>
+                  <div key={pl.name}
+                    className={`pc${questsDone===EXERCISES.length?" all-done":""}${dragIdx===idx?" dragging":""}${dragOverIdx===idx?" drag-over":""}`}
+                    style={{"--pc":pl.color,"--pc-dim":pl.dim,"--pc-glow":pl.glow,"--pc-glow2":pl.glow2,
+                      opacity: dragIdx===idx ? 0.4 : 1,
+                      transition: "opacity 0.15s, transform 0.15s",
+                      transform: dragOverIdx===idx && dragIdx!==idx ? "scale(1.03)" : "scale(1)",
+                      cursor: dragIdx!==null ? "grabbing" : "pointer"
+                    }}
+                    draggable={true}
+                    onDragStart={()=>setDragIdx(idx)}
+                    onDragEnter={()=>setDragOverIdx(idx)}
+                    onDragOver={e=>e.preventDefault()}
+                    onDragEnd={()=>{
+                      if(dragIdx!==null && dragOverIdx!==null && dragIdx!==dragOverIdx){
+                        const orderedNames = playerOrder || players.map(p=>p.name);
+                        const orderedPlayers = orderedNames.map(n=>players.find(p=>p.name===n)).filter(Boolean);
+                        players.forEach(p=>{ if(!orderedPlayers.find(op=>op.name===p.name)) orderedPlayers.push(p); });
+                        const newOrder = [...orderedPlayers];
+                        const [moved] = newOrder.splice(dragIdx, 1);
+                        newOrder.splice(dragOverIdx, 0, moved);
+                        const newOrderNames = newOrder.map(p=>p.name);
+                        setPlayerOrder(newOrderNames);
+                        try { localStorage.setItem("dq_player_order", JSON.stringify(newOrderNames)); } catch(e){}
+                      }
+                      setDragIdx(null);
+                      setDragOverIdx(null);
+                    }}
+                    onClick={()=>{ if(dragIdx===null && !isSunday) goQuests(pl.name); }}>
+                    <div className="pc-name" style={{textAlign:"center"}}>{pl.name}</div>
                     <div className={`pc-sub${questsDone>0?" has-progress":""}`}>
                       {questsDone}/{EXERCISES.length} quests completed
                     </div>
@@ -1409,6 +1475,32 @@ export default function DailyQuest() {
           const msEnd   = new Date(yr, mo+1, 0, 23, 59, 59).getTime();
           const monthLogs = logs.filter(l=>{ const t=new Date(l.date).getTime(); return t>=msStart&&t<=msEnd; });
 
+          // Previous month data — only up to same day-of-month as today (fair comparison)
+          const isCurrentMonth = yr===today.getFullYear() && mo===today.getMonth();
+          const cutoffDay = isCurrentMonth ? today.getDate() : new Date(yr, mo+1, 0).getDate(); // if viewing past month, use full month
+          const prevMo = mo===0 ? 11 : mo-1;
+          const prevYr = mo===0 ? yr-1 : yr;
+          const prevStart = new Date(prevYr, prevMo, 1).getTime();
+          const prevCutoff = new Date(prevYr, prevMo, cutoffDay, 23, 59, 59).getTime();
+          const prevLogs  = logs.filter(l=>{ const t=new Date(l.date).getTime(); return t>=prevStart&&t<=prevCutoff; });
+
+          // Also limit current month to same cutoff day
+          const curCutoff = new Date(yr, mo, cutoffDay, 23, 59, 59).getTime();
+          const curMonthLogs = monthLogs.filter(l=>new Date(l.date).getTime()<=curCutoff);
+
+          const compLabel = isCurrentMonth
+            ? `vs prev month day 1–${cutoffDay}`
+            : `full month comparison`;
+
+          function getTrend(curVal, prevVal) {
+            if(prevVal===0 && curVal===0) return null;
+            const diff = Math.round((curVal - prevVal)*10)/10;
+            if(diff===0) return { arrow:"→", label:"=", cls:"trend-same" };
+            const label = Number.isInteger(diff) ? (diff>0?`+${diff}`:`${diff}`) : (diff>0?`+${diff.toFixed(1)}`:`${diff.toFixed(1)}`);
+            if(diff>0)   return { arrow:"↑", label, cls:"trend-up" };
+            return       { arrow:"↓", label, cls:"trend-down" };
+          }
+
           // Sort players: by total desc, ties broken by who led first historically
           function rankPlayers(metric) {
             return [...players].map(pl=>({ pl, val: metric(pl.name, monthLogs) }))
@@ -1437,6 +1529,7 @@ export default function DailyQuest() {
               });
               return count;
             }},
+
           ];
 
           return (
@@ -1447,6 +1540,7 @@ export default function DailyQuest() {
                 <div className="board-month">{monthLabel}</div>
                 <button className="board-nav-btn" onClick={()=>{ if(mo===11){setBoardMonth(0);setBoardYear(yr+1);}else setBoardMonth(mo+1); }}>NEXT →</button>
               </div>
+
               {EXERCISES.map(ex=>(
                 <div key={ex.name} className="board-ex-block">
                   <div className="board-ex-name">{ex.name}</div>
@@ -1466,17 +1560,61 @@ export default function DailyQuest() {
                     return (
                       <div key={cat.key} className="board-category">
                         <div className="board-cat-title">{cat.label}</div>
-                        {ranked.map(({pl,val},ri)=>(
-                          <div key={pl.name} className="board-row">
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:12,fontWeight:900,color:"rgba(255,255,255,0.85)",minWidth:20}}>{ri+1}.</span>
-                              <div className="board-row-name" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{pl.name}</div>
+                        {ranked.map(({pl,val},ri)=>{
+                          // Get prev month value for same metric
+                          // Use cutoff-limited logs for fair comparison
+                          const logsForTrend = isCurrentMonth ? curMonthLogs : monthLogs;
+                          function calcMetric(logs2, key) {
+                            if(key==="totalReps") return logs2.filter(l=>l.player===pl.name&&l.exercise===ex.name).reduce((s,l)=>s+l.total,0);
+                            if(key==="avgSet") {
+                              const allSets=logs2.filter(l=>l.player===pl.name&&l.exercise===ex.name).flatMap(l=>l.sets).filter(s=>s>0);
+                              if(!allSets.length) return 0;
+                              return Math.round((allSets.reduce((a,b)=>a+b,0)/allSets.length)*10)/10;
+                            }
+                            const goal=goals[ex.name]||ex.goal;
+                            const days=new Set(logs2.filter(l=>l.player===pl.name&&l.exercise===ex.name).map(l=>new Date(l.date).toDateString()));
+                            let c=0;
+                            days.forEach(ds=>{
+                              const tot=logs2.filter(l=>l.player===pl.name&&l.exercise===ex.name&&new Date(l.date).toDateString()===ds).reduce((s,l)=>s+l.total,0);
+                              if(tot>=goal) c++;
+                            });
+                            return c;
+                          }
+                          const curVal2 = calcMetric(logsForTrend, cat.key);
+                          const prevVal = calcMetric(prevLogs, cat.key);
+                          const trend = getTrend(curVal2, prevVal);
+                          // Avg set for this player/exercise
+                          const avgSets = logsForTrend.filter(l=>l.player===pl.name&&l.exercise===ex.name).flatMap(l=>l.sets).filter(s=>s>0);
+                          const avgSet = avgSets.length ? Math.round((avgSets.reduce((a,b)=>a+b,0)/avgSets.length)*10)/10 : 0;
+                          const prevAvgSets = prevLogs.filter(l=>l.player===pl.name&&l.exercise===ex.name).flatMap(l=>l.sets).filter(s=>s>0);
+                          const prevAvgSet = prevAvgSets.length ? Math.round((prevAvgSets.reduce((a,b)=>a+b,0)/prevAvgSets.length)*10)/10 : 0;
+                          const avgTrend = getTrend(avgSet, prevAvgSet);
+                          return (
+                            <div key={pl.name} className="board-row" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",alignItems:"center",gap:4}}>
+                              {/* Left: rank + name */}
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:12,fontWeight:900,color:"rgba(255,255,255,0.85)",minWidth:18}}>{ri+1}.</span>
+                                <div className="board-row-name" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{pl.name}</div>
+                              </div>
+                              {/* Center: main value + trend */}
+                              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                                {val>0
+                                  ? <div className="board-row-val" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{val.toLocaleString()}</div>
+                                  : <div className="board-row-empty">—</div>}
+                                {trend && val>0 && <div className={trend.cls}>{trend.arrow} {trend.label}</div>}
+                              </div>
+                              {/* Right: avg set size */}
+                              {cat.key==="totalReps" ? (
+                                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
+                                  {avgSet>0 ? <>
+                                    <div style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:13,fontWeight:900,color:"rgba(255,255,255,0.55)"}}>∅{avgSet}</div>
+                                    {avgTrend && <div className={avgTrend.cls} style={{fontSize:9}}>{avgTrend.arrow} {avgTrend.label}</div>}
+                                  </> : <div className="board-row-empty">—</div>}
+                                </div>
+                              ) : <div/>}
                             </div>
-                            {val>0
-                              ? <div className="board-row-val" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{val.toLocaleString()}</div>
-                              : <div className="board-row-empty">—</div>}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })}
