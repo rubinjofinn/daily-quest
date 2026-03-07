@@ -67,6 +67,14 @@ const STYLE = `
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
     width: 100%; box-sizing: border-box; padding: 0 12px;
   }
+  @media (max-width: 480px) {
+    .player-grid { grid-template-columns: 1fr; gap: 12px; }
+    .pc { min-height: 160px; padding: 20px 16px 18px; }
+    .pc-name { font-size: clamp(28px, 8vw, 40px); letter-spacing: 5px; }
+    .pc-sub { font-size: 15px; }
+    .pc-bar-lbl { font-size: 15px; width: 80px; }
+    .pc-bar-count { font-size: 13px; min-width: 52px; }
+  }
 
   .pc {
     background: var(--card-bg);
@@ -433,8 +441,8 @@ const STYLE = `
   .board-cat-title { font-family:'OrbitronEmbed',var(--font-d); font-size:11px; font-weight:900; color:var(--cyan); text-align:center; letter-spacing:2px; margin-bottom:12px; }
   .board-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
   .board-row:last-child { border-bottom:none; }
-  .board-row-name { font-family:'OrbitronEmbed',var(--font-d); font-size:14px; font-weight:900; }
-  .board-row-val { font-family:'OrbitronEmbed',var(--font-d); font-size:16px; font-weight:900; color:rgba(255,255,255,0.9); }
+  .board-row-name { font-family:'OrbitronEmbed',var(--font-d); font-size:22px; font-weight:900; }
+  .board-row-val { font-family:'OrbitronEmbed',var(--font-d); font-size:22px; font-weight:900; color:rgba(255,255,255,0.9); }
   .board-row-empty { color:rgba(255,255,255,0.25); font-size:14px; }
   .board-info-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
   .board-info-modal { background:#0c0c1e; border:1.5px solid rgba(0,229,255,0.4); border-radius:16px; padding:24px 20px; max-width:320px; width:100%; }
@@ -447,8 +455,8 @@ const STYLE = `
   @media (max-width: 480px) {
     .board-ex-name { font-size:20px; }
     .board-cat-title { font-size:13px; letter-spacing:1.5px; }
-    .board-row-name { font-size:16px; }
-    .board-row-val { font-size:19px; }
+    .board-row-name { font-size:26px; }
+    .board-row-val { font-size:26px; }
     .trend-up, .trend-down, .trend-same { font-size:12px; }
   }
 
@@ -1627,7 +1635,7 @@ export default function DailyQuest() {
                                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
                                   {avgSet>0 ? <>
                                     <div
-                                      style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:13,fontWeight:900,color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
+                                      style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:22,fontWeight:900,color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
                                       onMouseEnter={e=>{ e.currentTarget.style.textShadow=`0 0 20px ${pl.color}`; e.currentTarget.style.transform="scale(1.15)"; e.currentTarget.style.display="inline-block"; }}
                                       onMouseLeave={e=>{ e.currentTarget.style.textShadow=`0 0 8px ${pl.glow}`; e.currentTarget.style.transform="scale(1)"; }}
                                       onClick={()=>setBoardInfo({player:pl, exercise:ex.name, category:"AVG SET SIZE", curVal:avgSet, prevVal:prevAvgSet, cutoffDay, curMonth:mo, curYear:yr, prevMonth:prevMo, prevYear:prevYr, isAvg:true})}>
