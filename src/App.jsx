@@ -1611,40 +1611,40 @@ export default function DailyQuest() {
                           const prevAvgSet = prevAvgSets.length ? Math.round((prevAvgSets.reduce((a,b)=>a+b,0)/prevAvgSets.length)*10)/10 : 0;
                           const avgTrend = getTrend(avgSet, prevAvgSet);
                           return (
-                            <div key={pl.name} className="board-row" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",alignItems:"center",gap:4}}>
-                              {/* Left: rank + name */}
-                              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                <span style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:12,fontWeight:900,color:"rgba(255,255,255,0.85)",minWidth:18}}>{ri+1}.</span>
-                                <div className="board-row-name" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`}}>{pl.name}</div>
+                            <div key={pl.name} className="board-row" style={{display:"flex",alignItems:"flex-start",gap:0,padding:"10px 0"}}>
+                              {/* Left: rank + name — aligned to top of numbers */}
+                              <div style={{display:"flex",alignItems:"center",gap:6,flex:"0 0 38%",minWidth:0,paddingTop:2}}>
+                                <span style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:12,fontWeight:900,color:"rgba(255,255,255,0.85)",flexShrink:0}}>{ri+1}.</span>
+                                <div className="board-row-name" style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1}}>{pl.name}</div>
                               </div>
-                              {/* Center: main value + trend */}
-                              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                              {/* Center: total reps + trend — fixed width, centered */}
+                              <div style={{flex:"0 0 31%",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                                 {val>0
                                   ? <div className="board-row-val"
-                                      style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
+                                      style={{color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s",lineHeight:1}}
                                       onMouseEnter={e=>{ e.currentTarget.style.textShadow=`0 0 20px ${pl.color}`; e.currentTarget.style.transform="scale(1.15)"; e.currentTarget.style.display="inline-block"; }}
                                       onMouseLeave={e=>{ e.currentTarget.style.textShadow=`0 0 8px ${pl.glow}`; e.currentTarget.style.transform="scale(1)"; }}
                                       onClick={()=>setBoardInfo({player:pl, exercise:ex.name, category:cat.label, curVal:val, prevVal, cutoffDay, curMonth:mo, curYear:yr, prevMonth:prevMo, prevYear:prevYr})}>
                                       {val.toLocaleString()}
                                     </div>
                                   : <div className="board-row-empty">—</div>}
-                                {trend && val>0 && <div className={trend.cls}>{trend.arrow} {trend.label}</div>}
+                                {trend && val>0 && <div className={trend.cls} style={{fontSize:10,lineHeight:1}}>{trend.arrow} {trend.label}</div>}
                               </div>
-                              {/* Right: avg set size */}
+                              {/* Right: avg set + trend — fixed width, right-aligned */}
                               {cat.key==="totalReps" ? (
-                                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
+                                <div style={{flex:"0 0 31%",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
                                   {avgSet>0 ? <>
                                     <div
-                                      style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:22,fontWeight:900,color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s"}}
+                                      style={{fontFamily:"'OrbitronEmbed',var(--font-d)",fontSize:22,fontWeight:900,color:pl.color,textShadow:`0 0 8px ${pl.glow}`,cursor:"pointer",transition:"all 0.15s",lineHeight:1}}
                                       onMouseEnter={e=>{ e.currentTarget.style.textShadow=`0 0 20px ${pl.color}`; e.currentTarget.style.transform="scale(1.15)"; e.currentTarget.style.display="inline-block"; }}
                                       onMouseLeave={e=>{ e.currentTarget.style.textShadow=`0 0 8px ${pl.glow}`; e.currentTarget.style.transform="scale(1)"; }}
                                       onClick={()=>setBoardInfo({player:pl, exercise:ex.name, category:"AVG SET SIZE", curVal:avgSet, prevVal:prevAvgSet, cutoffDay, curMonth:mo, curYear:yr, prevMonth:prevMo, prevYear:prevYr, isAvg:true})}>
                                       ∅{avgSet}
                                     </div>
-                                    {avgTrend && <div className={avgTrend.cls} style={{fontSize:9}}>{avgTrend.arrow} {avgTrend.label}</div>}
+                                    {avgTrend && <div className={avgTrend.cls} style={{fontSize:10,lineHeight:1}}>{avgTrend.arrow} {avgTrend.label}</div>}
                                   </> : <div className="board-row-empty">—</div>}
                                 </div>
-                              ) : <div/>}
+                              ) : <div style={{flex:"0 0 31%"}}/>}
                             </div>
                           );
                         })}
