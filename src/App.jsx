@@ -799,6 +799,7 @@ export default function DailyQuest() {
   const [syncing, setSyncing]           = useState(false);
   const [syncStatus, setSyncStatus]     = useState(null); // null | 'ok' | 'err'
   const sheetLoadedRef = useRef(false);
+  const pendingIdsRef = useRef(new Set()); // IDs of logs added locally but not yet confirmed by Sheets
   const [calCustom, setCalCustom]       = useState({}); // {date, player, exercise} or {date} or {date, player}
   const [histFilter, setHistFilter]     = useState({player:"All",exercise:"All"});
   const [statsMode, setStatsMode]       = useState("week");
@@ -834,9 +835,19 @@ export default function DailyQuest() {
     };
 
     const applyLogs = (parsed) => {
-      const sorted = parsed.sort((a,b)=>b.ts-a.ts);
-      setLogs(sorted);
-      try { localStorage.setItem("dq_logs", JSON.stringify(sorted.map(l=>({...l, date:l.date.toISOString()})))); } catch(e){}
+      // Merge: keep any locally-added logs that Sheets hasn't confirmed yet
+      setLogs(prevLogs => {
+        const sheetIds = new Set(parsed.map(l => l.id));
+        // Remove from pending once Sheets has them
+        for (const id of [...pendingIdsRef.current]) {
+          if (sheetIds.has(id)) pendingIdsRef.current.delete(id);
+        }
+        // Pending = local logs not yet in Sheets response
+        const pendingLogs = prevLogs.filter(l => pendingIdsRef.current.has(l.id));
+        const merged = [...pendingLogs, ...parsed].sort((a,b)=>b.ts-a.ts);
+        try { localStorage.setItem("dq_logs", JSON.stringify(merged.map(l=>({...l, date:l.date.toISOString()})))); } catch(e){}
+        return merged;
+      });
     };
 
     // 1. Show localStorage cache instantly
@@ -880,6 +891,7 @@ export default function DailyQuest() {
 
   // ── Push new log to Sheets ─────────────────────────────
   function pushLog(log){
+    pendingIdsRef.current.add(log.id);
     fetch(SHEETS_URL, {
       method:"POST", redirect:"follow",
       body: JSON.stringify({ action:"add", log:{
@@ -945,6 +957,7 @@ export default function DailyQuest() {
   }
 
   function deleteSet(logId, setIndex){
+    pendingIdsRef.current.delete(logId);
     setLogs(prev=>prev.flatMap(l=>{
       if(l.id!==logId) return [l];
       const newSets = l.sets.filter((_,i)=>i!==setIndex);
