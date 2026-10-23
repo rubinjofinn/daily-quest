@@ -742,6 +742,28 @@ const FONT_STYLE = `
   }
 `;
 
+// Durable queue helpers. No seed data is ever automatically uploaded.
+function newLogId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return "log_" + crypto.randomUUID();
+  return "log_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+}
+function normalizeLog(l) {
+  if (!l || l.id == null || !l.player || !l.exercise) return null;
+  const date = new Date(l.date);
+  if (isNaN(date.getTime())) return null;
+  const sets = (Array.isArray(l.sets) ? l.sets : String(l.sets || "").split(","))
+    .map(Number).filter(n => Number.isFinite(n) && n > 0);
+  return { ...l, id: String(l.id), sets, total: sets.reduce((a,b)=>a+b,0), date, ts: date.getTime() };
+}
+function serializeLog(l) {
+  return { id: String(l.id), player: l.player, exercise: l.exercise,
+    sets: [...l.sets], total: l.sets.reduce((a,b)=>a+b,0), date: new Date(l.date).toISOString() };
+}
+function readQueue() {
+  try { const v = JSON.parse(localStorage.getItem("dq_pending_ops_v2") || "[]"); return Array.isArray(v) ? v : []; }
+  catch (err) { console.error("Pending queue corrupt; preserve localStorage", err); return []; }
+}
+
 export default function DailyQuest() {
   const [tab, setTab]                   = useState("players");
   const [activePlayer, setActivePlayer] = useState(null);
@@ -767,7 +789,7 @@ export default function DailyQuest() {
       try { localStorage.setItem("dq_myplayer", name); } catch(e){}
     }
   }
-  const [logs, setLogs]                 = useState(()=>seedData());
+  const [logs, setLogs]                 = useState(()=>{ try { const v=JSON.parse(localStorage.getItem("dq_logs")||"null"); if(Array.isArray(v)) return v.map(normalizeLog).filter(Boolean); } catch(e) {} return seedData(); });
   const [loading, setLoading]           = useState(false); // background only
   const [goals, setGoals]               = useState(Object.fromEntries(EXERCISES.map(e=>[e.name,e.goal])));
   const [questInputs, setQuestInputs]   = useState({});
@@ -796,16 +818,18 @@ export default function DailyQuest() {
   const [deletePinError, setDeletePinError] = useState(false);
   const ADMIN_PIN = "1996";
   const SHEETS_URL = "https://script.google.com/macros/s/AKfycbw1-Kh3fELae03Y1tPJeWo5g25Dswr18RGsZ05ZSzoOxoZQ0O5V19xb6kdpQmkvoKKpMg/exec";
-  const [syncing, setSyncing]           = useState(false);
-  const [syncStatus, setSyncStatus]     = useState(null); // null | 'ok' | 'err'
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
   const sheetLoadedRef = useRef(false);
-  const pendingIdsRef = useRef(new Set()); // IDs of logs added locally but not yet confirmed by Sheets
+  const logsRef = useRef(logs);
+  const flushRunningRef = useRef(false);
+  const queueRef = useRef(readQueue());
   const [calCustom, setCalCustom]       = useState({}); // {date, player, exercise} or {date} or {date, player}
   const [histFilter, setHistFilter]     = useState({player:"All",exercise:"All"});
   const [statsMode, setStatsMode]       = useState("week");
   const [players, setPlayers]           = useState(DEFAULT_PLAYERS);
   const [newPlayer, setNewPlayer]       = useState("");
-  const nextId = useRef(Date.now());
+
   const countdown = useCountdown();
 
   // ── Auto-select myPlayer on startup ──
@@ -815,102 +839,131 @@ export default function DailyQuest() {
     }
   }, [myPlayer]);
 
-  // ── Load: localStorage first (instant), then sync from Sheets ──
-  useEffect(()=>{
-    if(sheetLoadedRef.current) return;
-    sheetLoadedRef.current = true;
-
-    const parseSheetLogs = (data) => {
-      return (data.logs||[]).map(l=>({
-        ...l,
-        id: l.id,
-        sets: (()=>{
-          const raw = Array.isArray(l.sets) ? l.sets.join(",") : String(l.sets);
-          return raw.split(",").map(s=>Math.round(parseFloat(s.trim().replace(",",".")))).filter(n=>!isNaN(n)&&n>0);
-        })(),
-        total: Number(l.total),
-        date: new Date(l.date),
-        ts: new Date(l.date).getTime(),
-      })).filter(l=>l.player&&l.exercise);
-    };
-
-    const applyLogs = (parsed) => {
-      // Merge: keep any locally-added logs that Sheets hasn't confirmed yet
-      setLogs(prevLogs => {
-        const sheetIds = new Set(parsed.map(l => l.id));
-        // Remove from pending once Sheets has them
-        for (const id of [...pendingIdsRef.current]) {
-          if (sheetIds.has(id)) pendingIdsRef.current.delete(id);
-        }
-        // Pending = local logs not yet in Sheets response
-        const pendingLogs = prevLogs.filter(l => pendingIdsRef.current.has(l.id));
-        const merged = [...pendingLogs, ...parsed].sort((a,b)=>b.ts-a.ts);
-        try { localStorage.setItem("dq_logs", JSON.stringify(merged.map(l=>({...l, date:l.date.toISOString()})))); } catch(e){}
-        return merged;
-      });
-    };
-
-    // 1. Show localStorage cache instantly
-    let hasCached = false;
-    try {
-      const cached = localStorage.getItem("dq_logs");
-      if(cached) {
-        const parsed = JSON.parse(cached).map(l=>({...l, date:new Date(l.date), ts:new Date(l.date).getTime()}));
-        setLogs(parsed.sort((a,b)=>b.ts-a.ts));
-        hasCached = true;
-      }
-    } catch(e){}
-
-    // 2. Wake up Apps Script immediately with a throwaway prefetch
-    //    This starts the cold-start clock before the real fetch below
-    fetch(SHEETS_URL, { method:"GET", redirect:"follow" }).catch(()=>{});
-
-    // 3. Real fetch — try fast first (5s timeout), then retry once
-    const fetchWithTimeout = (timeout) => {
-      const ctrl = new AbortController();
-      const tid = setTimeout(()=>ctrl.abort(), timeout);
-      return fetch(SHEETS_URL, { redirect:"follow", signal:ctrl.signal })
-        .then(r=>{ clearTimeout(tid); if(!r.ok) throw new Error(r.status); return r.json(); });
-    };
-
-    fetchWithTimeout(6000)
-      .catch(()=> fetchWithTimeout(10000)) // retry once with longer timeout
-      .then(data=>{
-        applyLogs(parseSheetLogs(data));
-        setSyncStatus('ok');
-        setTimeout(()=>setSyncStatus(null),2000);
-      })
-      .catch(err=>{ console.error("Sheets load failed:",err); setSyncStatus('err'); });
-  },[]);
-
-  // ── Save logs to localStorage on every change ───────────
-  useEffect(()=>{
-    if(!logs.length) return;
-    try { localStorage.setItem("dq_logs", JSON.stringify(logs.map(l=>({...l, date: l.date instanceof Date ? l.date.toISOString() : l.date})))); } catch(e){}
-  },[logs]);
-
-  // ── Push new log to Sheets ─────────────────────────────
-  function pushLog(log){
-    pendingIdsRef.current.add(log.id);
-    fetch(SHEETS_URL, {
-      method:"POST", redirect:"follow",
-      body: JSON.stringify({ action:"add", log:{
-        id: String(log.id),
-        player: log.player,
-        exercise: log.exercise,
-        sets: log.sets,
-        total: log.total,
-        date: log.date instanceof Date ? log.date.toISOString() : new Date(log.date).toISOString(),
-      }})
-    }).catch(()=>{});
+  // Durable write-ahead queue: operations survive refreshes and offline use.
+  function saveQueue(queue) {
+    queueRef.current = queue;
+    try { localStorage.setItem("dq_pending_ops_v2", JSON.stringify(queue)); }
+    catch (err) { console.error("Cannot persist pending operations", err); setSyncStatus("err"); }
   }
 
-  // ── Delete log from Sheets ────────────────────────────
-  function deleteSheetLog(id){
-    fetch(SHEETS_URL, {
-      method:"POST", redirect:"follow",
-      body: JSON.stringify({ action:"delete", id: String(id) })
-    }).catch(()=>{});
+  function enqueueOperation(op) {
+    // Coalesce changes for one log while preserving the original operation order.
+    const q = [...queueRef.current];
+    const i = q.findIndex(item => String(item.id) === String(op.id));
+    if (i >= 0) q[i] = op;
+    else q.push(op);
+    saveQueue(q);
+    setSyncStatus("pending");
+    void flushQueue();
+  }
+
+  async function loadServerLogs() {
+    const r = await fetch(SHEETS_URL + "?t=" + Date.now(), { redirect: "follow", cache: "no-store" });
+    if (!r.ok) throw new Error("GET HTTP " + r.status);
+    const data = await r.json();
+    if (!Array.isArray(data.logs)) throw new Error("Invalid GET response");
+    return data.logs.map(normalizeLog).filter(Boolean);
+  }
+
+  async function refreshLogs() {
+    const remote = await loadServerLogs();
+    const byId = new Map(remote.map(l => [String(l.id), l]));
+    // Preserve orphaned local records from the old broken version for manual recovery.
+    const orphaned = logsRef.current.filter(l => !byId.has(String(l.id)) &&
+      !queueRef.current.some(op => String(op.id) === String(l.id)) && !String(l.id).startsWith("seed_"));
+    if (orphaned.length) {
+      try {
+        const previous = JSON.parse(localStorage.getItem("dq_recovery_orphans") || "[]");
+        const backups = new Map((Array.isArray(previous) ? previous : []).map(l => [String(l.id), l]));
+        for (const l of orphaned) backups.set(String(l.id), serializeLog(l));
+        localStorage.setItem("dq_recovery_orphans", JSON.stringify([...backups.values()]));
+      } catch (err) { console.error("Recovery backup failed", err); }
+      // Never silently discard old unsynced workouts. They remain local until reconciled.
+      for (const l of orphaned) byId.set(String(l.id), l);
+    }
+    // Pending local operations always take precedence over remote snapshots.
+    for (const op of queueRef.current) {
+      if (op.action === "delete") byId.delete(String(op.id));
+      else byId.set(String(op.id), normalizeLog(op.log));
+    }
+    const merged = [...byId.values()].filter(Boolean).sort((a,b) => b.ts - a.ts);
+    logsRef.current = merged;
+    setLogs(merged);
+    return remote;
+  }
+
+  async function flushQueue() {
+    if (flushRunningRef.current || !queueRef.current.length || !navigator.onLine) return;
+    flushRunningRef.current = true;
+    setSyncing(true);
+    try {
+      while (queueRef.current.length && navigator.onLine) {
+        const op = queueRef.current[0];
+        // Apps Script ContentService redirects can block readable cross-origin POST
+        // responses. no-cors delivers the request; verification uses readable GET.
+        await fetch(SHEETS_URL, {
+          method: "POST", mode: "no-cors", redirect: "follow",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(op)
+        });
+        let confirmed = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
+          const remote = await loadServerLogs();
+          const found = remote.find(l => String(l.id) === String(op.id));
+          confirmed = op.action === "delete" ? !found :
+            !!found && JSON.stringify(found.sets) === JSON.stringify(op.log.sets) &&
+            found.total === op.log.total;
+          if (confirmed) break;
+        }
+        if (!confirmed) throw new Error("Server did not confirm " + op.action + " " + op.id);
+        // A newer operation for the same ID may have been queued while awaiting.
+        if (queueRef.current[0] === op) saveQueue(queueRef.current.slice(1));
+        else saveQueue(queueRef.current.filter(item => item !== op));
+        setSyncStatus(queueRef.current.length ? "pending" : "ok");
+      }
+      await refreshLogs();
+    } catch (err) {
+      console.error("Daily Quest save pending retry:", err);
+      setSyncStatus("err");
+    } finally {
+      flushRunningRef.current = false;
+      setSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (sheetLoadedRef.current) return;
+    sheetLoadedRef.current = true;
+    // The useState initializer already restored the local cache synchronously.
+    refreshLogs().then(() => {
+      setSyncStatus(queueRef.current.length ? "pending" : "ok");
+      void flushQueue();
+    }).catch(err => {
+      console.error("Initial load failed", err);
+      setSyncStatus("err");
+    });
+    const onOnline = () => { void flushQueue(); void refreshLogs().catch(console.error); };
+    const interval = setInterval(() => { void flushQueue(); }, 15000);
+    window.addEventListener("online", onOnline);
+    return () => { clearInterval(interval); window.removeEventListener("online", onOnline); };
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("dq_logs", JSON.stringify(logs.map(l => ({...l, date: new Date(l.date).toISOString()})))); }
+    catch (err) { console.error("Local save failed", err); setSyncStatus("err"); }
+  }, [logs]);
+
+  function pushLog(log) {
+    enqueueOperation({ action: "add", id: String(log.id), log: serializeLog(log) });
+  }
+
+  function deleteSheetLog(id) {
+    enqueueOperation({ action: "delete", id: String(id) });
+  }
+
+  function updateSheetLog(log) {
+    enqueueOperation({ action: "update", id: String(log.id), log: serializeLog(log) });
   }
 
   const streaks = useMemo(()=>{
@@ -933,7 +986,8 @@ export default function DailyQuest() {
     // Use actual current time for ts so sets are ordered correctly, but keep the date as selected day
     const logDate = new Date(date);
     logDate.setHours(new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
-    const newLog = {id:`log_${nextId.current++}`,player,exercise,sets:[reps],total:reps,date:logDate,ts:now};
+    const newLog = {id:newLogId(),player,exercise,sets:[reps],total:reps,date:logDate,ts:now};
+    logsRef.current = [newLog, ...logsRef.current];
     setLogs(p=>[newLog,...p]);
     pushLog(newLog);
   }
@@ -956,21 +1010,25 @@ export default function DailyQuest() {
       .flatMap(l=>l.sets.map((s,i)=>({value:s,logId:l.id,setIndex:i})));
   }
 
-  function deleteSet(logId, setIndex){
-    pendingIdsRef.current.delete(logId);
-    setLogs(prev=>prev.flatMap(l=>{
-      if(l.id!==logId) return [l];
-      const newSets = l.sets.filter((_,i)=>i!==setIndex);
-      if(newSets.length===0){ deleteSheetLog(logId); return []; }
-      return [{...l, sets:newSets, total:newSets.reduce((a,b)=>a+b,0)}];
-    }));
+  function deleteSet(logId, setIndex) {
+    const current = logsRef.current.find(l => String(l.id) === String(logId));
+    if (!current) return;
+    const newSets = current.sets.filter((_,i) => i !== setIndex);
+    const updated = newSets.length ? { ...current, sets: newSets, total: newSets.reduce((a,b)=>a+b,0) } : null;
+    const next = updated ? logsRef.current.map(l => String(l.id) === String(logId) ? updated : l)
+                         : logsRef.current.filter(l => String(l.id) !== String(logId));
+    logsRef.current = next;
+    setLogs(next);
+    if (updated) updateSheetLog(updated);
+    else deleteSheetLog(logId);
   }
 
   function addReps(exercise, reps){
     const cur = todaySetsList(activePlayer, exercise).reduce((a,b)=>a+b.value,0);
     const goal = goals[exercise]||100;
     const wasDone = cur >= goal;
-    const newLog={id:`log_${nextId.current++}`,player:activePlayer,exercise,sets:[reps],total:reps,date:new Date(),ts:Date.now()};
+    const newLog={id:newLogId(),player:activePlayer,exercise,sets:[reps],total:reps,date:new Date(),ts:Date.now()};
+    logsRef.current = [newLog, ...logsRef.current];
     setLogs(p=>[newLog,...p]);
     pushLog(newLog);
     if(!wasDone&&(cur+reps)>=goal) setConfetti(true);
@@ -983,7 +1041,8 @@ export default function DailyQuest() {
     const cur = todaySetsList(activePlayer, exercise).reduce((a,b)=>a+b.value,0);
     const goal = goals[exercise]||100;
     const wasDone = cur >= goal;
-    const newLog={id:`log_${nextId.current++}`,player:activePlayer,exercise,sets,total,date:new Date(),ts:Date.now()};
+    const newLog={id:newLogId(),player:activePlayer,exercise,sets,total,date:new Date(),ts:Date.now()};
+    logsRef.current = [newLog, ...logsRef.current];
     setLogs(p=>[newLog,...p]);
     pushLog(newLog);
     setQuestInputs(p=>({...p,[exercise]:""}));
@@ -994,7 +1053,8 @@ export default function DailyQuest() {
     const sets=parseSet(logSets);
     if(!sets.length)return;
     const total=sets.reduce((a,b)=>a+b,0);
-    const newLog={id:`log_${nextId.current++}`,player:logPlayer,exercise:logEx,sets,total,date:new Date(),ts:Date.now()};
+    const newLog={id:newLogId(),player:logPlayer,exercise:logEx,sets,total,date:new Date(),ts:Date.now()};
+    logsRef.current = [newLog, ...logsRef.current];
     setLogs(p=>[newLog,...p]);
     pushLog(newLog);
     setSaveOk({total,exercise:logEx});
